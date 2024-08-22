@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <meta charset="UTF-8" />
+    <!-- <link rel="stylesheet" href="/assets/css/frontend.css"> -->
+    <!-- <title>Agent Notification</title> -->
+    <link type="text/css" rel="stylesheet" href="./assets/css/bootstrap.css" media="screen,projection" />
+    <link rel="stylesheet" href="./assets/css/style.css" media="screen" charset="utf-8" />
+
+    <!----------- Code here -------------->
+
+    
+    <!------------------------------------>
+
+</head>
+
+<body data-window="main">
+
+    <div class="warper">
+
+        <div class="row">
+            <div class="col-12">
+                <table class="table table-sm fs-6">
+                    <tr>
+                        <div class="pt-2 pl-2 pr-2">
+                    <tr>
+                        <td class="text-white">
+                            <span class="text-white" id="connectTime">Information</span>
+                        </td>
+                    </tr>
+                    <tr>
+                        <td class="text-white">
+                            <span class="text-blue badge bg-danger" id="ConnectionStatus">Disconnected</span>
+                        </td>
+                    </tr>
+                    <tr>
+                    </tr>
+            </div>
+            </tr>
+            </table>
+        </div>
+
+        <div class="col-12">
+            <table class="table table-sm fs-6">
+                <tr>
+                    <div class="row">
+                        <div class="col-sm-12 text-center ">
+                            <button id="buttonCall" class="btn btn-primary btn-sm shadow btn-block mt-2" disable
+                                onclick="CallOnescreen(1,'0000')">
+                                Pop-up Chrome
+                            </button>
+                            <button id="buttonDisConnect" class="btn btn-danger btn-sm shadow btn-block mt-2"
+                                onclick="logoutFromAPI()">
+                                Disconnect
+                            </button>
+                        </div>
+                    </div>
+                </tr>
+            </table>
+        </div>
+
+        <div id="display">
+            <div class="row">
+                <div class="col-12">
+                    <div class="input-group mb-1">
+                        <input type="text" class="form-control form-control-sm" id="agent"
+                            placeholder="Enter Agent Code" />
+                        <button id="buttonConnect" class="btn btn-warning btn-sm btn-block shadow"
+                            onclick="checkInput('on')">
+                            Connect
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-md-12 text-center pt-2">
+
+        </div>
+    </div>
+    </div>
+
+    <script>
+        // You can also require other files to run in this process
+        // require('./renderer.js')
+    </script>
+</body>
+
+</html>
