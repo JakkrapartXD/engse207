@@ -1,90 +1,989 @@
 <!DOCTYPE html>
 <html>
-
-<head>
+  <head>
     <meta charset="UTF-8" />
     <!-- <link rel="stylesheet" href="/assets/css/frontend.css"> -->
     <!-- <title>Agent Notification</title> -->
-    <link type="text/css" rel="stylesheet" href="./assets/css/bootstrap.css" media="screen,projection" />
-    <link rel="stylesheet" href="./assets/css/style.css" media="screen" charset="utf-8" />
+    <link
+      type="text/css"
+      rel="stylesheet"
+      href="./assets/css/bootstrap.css"
+      media="screen,projection"
+    />
+    <link
+      rel="stylesheet"
+      href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css"
+    />
+    <link
+      rel="stylesheet"
+      href="./assets/css/style.css"
+      media="screen"
+      charset="utf-8"
+    />
 
     <!----------- Code here -------------->
 
-    
+    <script language="JavaScript">
+      const { ipcRenderer, remote } = require("electron");
+
+      const electron = require("electron");
+      const path = require("path");
+
+      const $ = require("jquery");
+      const Timer = require("easytimer.js").Timer;
+      const timer = new Timer();
+
+      const bearerToken =
+        "1aaZ!ARgAQGuQzp00D5D000000.mOv2jmhXkfIsjgywpCIh7.HZpc6vED1LCbc90DTaVDJwdNqbTW5r4uZicv8AFfkOE1ialqnR8UN5.wnAgh090h";
+
+      var AgentCode;
+      var agentStatusID;
+      var callTotal = 0;
+      var agentData;
+      var AgentName;
+
+      var CallID;
+
+      let statusLabel;
+
+      //--Dev Server------------------------------
+      // var APIServer = "https://192.168.56.1:8443/api/v1";
+      // var WebSecketServer = "ws://192.168.56.1:3071";
+
+      //--Staging Server------------------------------
+      var APIServer = "https://lab-api.se-rmutl.net/engse207/api/v1";
+      var WebSecketServer = "ws://lab-ws.se-rmutl.net/engse207";
+
+      var ConcurrentCall = [];
+      var connectSocket = false;
+      var IsLogin = 0;
+      var wsChecks = "false";
+
+      var c;
+      let ws;
+
+      let checked;
+
+      //--- Notification see at: https://www.youtube.com/watch?v=MrPwuJX4VTg
+
+      function notify() {
+        const notification = {
+          title: "Custom Notification",
+          subtitle: "Subtitle of the Notification",
+          body: "Body of Custom Notification",
+          silent: false,
+          icon: path.join(__dirname, "./assets/agent_notification.png"),
+          timeoutType: "never",
+          requireInteraction: true,
+        };
+        const myNotification = new window.Notification(
+          notification.title,
+          notification
+        );
+
+        myNotification.onclick = (e) => console.log("User clicked the pop-up");
+        myNotification.onclose = (e) => console.log("User closed the pop-up");
+
+        myNotification.onerror = (err) => console.error(err);
+      }
+
+      function statusNotify(Message) {
+        const notification = {
+          title: "Agent Status Changed",
+          subtitle: "Subtitle of the Notification",
+          //body: '** '+ statusLabel+ ' **',
+          body: Message,
+          silent: false,
+          requireInteraction: false,
+          icon: path.join(__dirname, "./assets/impatient.png"),
+        };
+        const myNotification = new window.Notification(
+          notification.title,
+          notification
+        );
+
+        myNotification.onclick = (e) => console.log("User clicked the pop-up");
+        myNotification.onclose = (e) => console.log("User closed the pop-up");
+
+        myNotification.onerror = (err) => console.error(err);
+      }
+
+      function messageNotify(ReceiveMessage) {
+        /*
+            const notification = {
+                title: 'From: '+ReceiveMessage.FromAgentCode,
+                //subtitle: 'Subtitle of the Notification',
+                //body: '** '+ statusLabel+ ' **',
+                body: 'Message: '+ReceiveMessage.Message +'\n'+'['+ReceiveMessage.DateTime+']',
+                silent: false,
+                requireInteraction: true,
+                icon: path.join(__dirname, './assets/impatient.png')
+            }
+            */
+        const notification = {
+          title:
+            ReceiveMessage.DateTime +
+            "\n" +
+            "From: " +
+            ReceiveMessage.FromAgentCode,
+          //subtitle: 'Subtitle of the Notification',
+          //body: '** '+ statusLabel+ ' **',
+          body: " " + ReceiveMessage.Message,
+          silent: false,
+          requireInteraction: true,
+          icon: path.join(__dirname, "./assets/impatient.png"),
+        };
+
+        const myNotification = new window.Notification(
+          notification.title,
+          notification
+        );
+
+        myNotification.onclick = (e) => console.log("User clicked the pop-up");
+        myNotification.onclose = (e) => console.log("User closed the pop-up");
+
+        myNotification.onerror = (err) => console.error(err);
+      }
+
+      /*
+                this.addListener('show', () => {
+                    console.log('Notification is shown');
+                });
+        
+                this.addListener('close', () => {
+                    console.log('Notification is Automatically Closed')
+                });
+        */
+
+      //----------------------------------
+
+      $(function () {
+        console.log("ready!");
+
+        $("#buttonCall").hide();
+        $("#buttonDisConnect").hide();
+        $("#sendmassgage").hide();
+        $("#connectTimeicon").hide();
+        $("#agent-status").hide();
+        $("#buttonConnect").show();
+        $("#nodata").hide();
+        //$("#errMessage").show();
+        $("#agent").focus();
+        //alert(localStorage.getItem("switch_104_02"));
+
+        //--- Running Chrome x64 only -----
+        if (localStorage.getItem("agent") != "") {
+          console.log("Saved Agent Code: " + localStorage.getItem("agent"));
+          $("#agent").val(localStorage.getItem("agent"));
+          checkInput("on");
+          //document.getElementById("agent").val(localStorage.getItem("agent"));
+        }
+      });
+
+      function CallOnescreen(operationType, phone_number) {
+        //console.log("---- CallOnescreen ----");
+        //console.log(" OperationType: " + phone_number);
+        //console.log(" Call to: " + phone_number);
+        //console.log(" Agent Code: " + agent_code);
+
+        ipcRenderer.send("callonescreen", {
+          operationType: operationType,
+          callParameter: "call",
+          phoneNumber: phone_number,
+          //x64Chrome: $('#switch_104_02').is(':checked'),
+          x64Chrome: true,
+          AgentCode: $("#agent").val(),
+          callId: "",
+        });
+      }
+
+      function checkInput(status) {
+        if ($("#agent").val() == "") {
+          //alert("Please enter Agent Code");
+          $("#connectTimeicon").show();
+          $("#connectTime").empty().append("Please enter Agent Code !!");
+
+          $("#agent").focus();
+        } else {
+          AgentCode = $("#agent").val();
+
+          $.ajax({
+            url:
+              APIServer + "/getOnlineAgentByAgentCode?agentcode=" + AgentCode,
+            headers: {
+              Authorization: "Bearer " + bearerToken,
+            },
+            timeout: 15000,
+            success: function (response) {
+              console.log(response);
+              console.log("response.error:" + response.error);
+              if (response.error == false) {
+                wsChecks = "true";
+                console.log("new: " + wsChecks);
+                //$("#errMessage").hide();
+
+                firstLogin(response.data);
+                $("#nodata").show();
+                $("#display").hide();
+                $("reports").show();
+                $("#buttonDisConnect").show();
+                $("#sendmassgage").show();
+                $("#agent-status").show();
+                $("#buttonCall").show();
+                IsLogin = 1;
+                AgentName = response.data.AgentName;
+
+                //-------- Web Socket ----------
+                websocketConnect(status);
+                // return wsChecks;
+                //-------- Web Socket ----------
+
+                console.log("checkInput status: " + response.data.AgentStatus);
+                statusDisplay(response.data.AgentStatus);
+
+                $("#ConnectionStatus").empty().append("Connected");
+
+                console.log(" Agent Code  -> filled");
+                localStorage.setItem("agent", $("#agent").val());
+                console.log(localStorage.getItem("agent"));
+              } else {
+                console.log("---- ERROR ------");
+                console.log(response);
+
+                //$("#statusLabel").empty().append(response.errMessage);
+                $("#connectTimeicon").show();
+                $("#connectTime").empty().append("Agent not found");
+
+                wsChecks = false;
+                // return exit();
+              }
+            },
+            error: function (XMLHttpRequest, textStatus, errorThrown) {
+              if (XMLHttpRequest.status === 404) {
+                $("#connectTimeicon").show();
+                $("#connectTime").empty().append("Agent not found");
+              } else {
+                $("#connectTimeicon").show();
+                $("#connectTime")
+                  .empty()
+                  .append("ERROR: " + error);
+              }
+              //$("#connectTime").empty().append("ERR_INTERNET_DISCONNECTED");
+              //$('#connectTime').empty().removeClass().addClass('badge bg-danger').append('ERR_INTERNET_DISCONNECTED');
+            },
+          });
+
+          console.log(wsChecks);
+        }
+      }
+
+      function updateAgentStatus(status) {
+        console.log({
+          AgentCode: AgentCode,
+          AgentName: AgentName,
+          IsLogin: IsLogin,
+          status: status,
+        });
+
+        $.ajax({
+          // url: APIServer + "/postOnlineAgentStatus",
+          url: APIServer + "/postOnlineAgentStatusByTeam",
+          headers: {
+            Authorization: "Bearer " + bearerToken,
+            "Content-Type": "application/json",
+          },
+          data: JSON.stringify({
+            AgentCode: AgentCode,
+            AgentName: AgentName,
+            Team: "4",
+            IsLogin: IsLogin,
+            AgentStatus: status,
+          }),
+          method: "POST",
+          success: function (response) {
+            console.log(response);
+            statusDisplay(status);
+            statusNotify("Agent status updated to " + getStatusLabel(status));
+          },
+          error: function (xhr, status, error) {
+            console.error(error);
+          },
+        });
+      }
+
+      function getStatusLabel(status) {
+        switch (status) {
+          case "1":
+            return "Available";
+          case "2":
+            return "Active";
+          case "3":
+            return "Wrap";
+          case "4":
+            return "Not Ready";
+          default:
+            return "N/A";
+        }
+      }
+
+      function postSendMessage() {
+        var fromAgentCode = AgentCode;
+        var toAgentCode = $("#toAgentCode").val();
+        var message = $("#sendMessage").val();
+        console.log({
+          fromAgentCode,
+          toAgentCode,
+          message,
+        });
+
+        $.ajax({
+          url: APIServer + "/postSendMessage",
+          headers: {
+            Authorization: "Bearer " + bearerToken,
+            "Content-Type": "application/json",
+          },
+          data: JSON.stringify({
+            FromAgentCode: fromAgentCode,
+            ToAgentCode: toAgentCode,
+            Message: message,
+          }),
+          method: "POST",
+          success: function (response) {
+            console.log(response);
+            messageNotify(response);
+          },
+          error: function (xhr, status, error) {
+            console.error(error);
+          },
+        });
+      }
+
+      function firstLogin(d) {
+        // connectSocket = true;
+
+        setLoginTime();
+
+        $("#status")
+          .removeClass()
+          .addClass("badge bg-success")
+          .empty()
+          .append("Connected");
+
+        // $('#statusLabel').empty().removeClass().addClass('badge bg-success').append('Available');
+
+        counterTimer();
+
+        console.log("d.AgentStatus: " + d.AgentStatus);
+
+        statusDisplay(d.AgentStatus);
+
+        ipcRenderer.on("getcallid", (e, call_id) => {
+          console.log("Call id:", call_id);
+          CallID = call_id;
+          //this.isConnected = true;
+        });
+      }
+
+      function statusDisplay(status) {
+        //let statusLabel;
+        switch (status) {
+          case "1":
+            statusLabel = "Available";
+            $("#icon").attr("src", "./assets/icon/avaliable.png");
+            $("#statusLabel")
+              .empty()
+              .removeClass()
+              .addClass("badge bg-info")
+              .append(statusLabel);
+
+            break;
+          case "2":
+            statusLabel = "Active";
+            $("#icon").attr("src", "./assets/icon/talking.png");
+            $("#statusLabel")
+              .empty()
+              .removeClass()
+              .addClass("badge bg-primary")
+              .append(statusLabel);
+
+            break;
+          case "3":
+            statusLabel = "Wrap";
+            $("#icon").attr("src", "./assets/icon/wrap.png");
+            $("#statusLabel")
+              .empty()
+              .removeClass()
+              .addClass("badge bg-warning")
+              .append(statusLabel);
+
+            break;
+          case "4":
+            statusLabel = "Not Ready";
+            $("#icon").attr("src", "./assets/icon/noready.png");
+            $("#statusLabel")
+              .empty()
+              .removeClass()
+              .addClass("badge bg-danger")
+              .append(statusLabel);
+
+            break;
+
+          default:
+            statusLabel = "N/A";
+            $("#icon").attr("src", "./assets/icon/na.png");
+
+            $("#statusLabel")
+              .empty()
+              .removeClass()
+              .addClass("badge bg-dark")
+              .append(statusLabel);
+            break;
+        }
+      }
+
+      function counterTimer() {
+        timer.stop();
+        timer.reset();
+
+        if (connectSocket != "false") {
+          timer.start();
+          timer.addEventListener("secondsUpdated", function (e) {
+            $("#basicUsage")
+              .empty()
+              .removeClass()
+              .addClass("badge bg-dark")
+              .append(timer.getTimeValues().toString());
+
+            //console.log(connectSocket)
+          });
+        }
+      }
+
+      function setLoginTime() {
+        var d = new Date();
+
+        var month = d.getMonth() + 1;
+        var day = d.getDate();
+        var hour = d.getHours();
+        var minute = d.getMinutes();
+        var sec = d.getSeconds();
+
+        var output =
+          d.getFullYear() +
+          "-" +
+          (month < 10 ? "0" : "") +
+          month +
+          "-" +
+          (day < 10 ? "0" : "") +
+          day +
+          " " +
+          (hour < 10 ? "0" : "") +
+          hour +
+          ":" +
+          (minute < 10 ? "0" : "") +
+          minute +
+          ":" +
+          (sec < 10 ? "0" : "") +
+          sec;
+
+        //$("#icon").attr("src", "./assets/icon/na.png");
+        $("#connectTimeicon").hide();
+        $("#connectTime")
+          .empty()
+          .append("[" + AgentCode + "] Starts at: " + output);
+      }
+
+      function logoutFromAPI() {
+        console.log("-- Agent Logout --");
+        timer.stop();
+        timer.reset();
+        $("#buttonCall").hide();
+        $("#nodata").hide();
+        $("#basicUsage").hide();
+        // ws = new WebSocket("ws://" + WebSecketServer + "/?agentcode=" + AgentCode);
+
+        //-------- Web Socket ----------
+        ws.close();
+        connectSocket = false;
+        //-------- Web Socket ----------
+
+        $("#AgentCode").empty().append("No Data");
+        $("#agent").show();
+        $("#status")
+          .removeClass()
+          .addClass("badge bg-warning")
+          .empty()
+          .append("Disconnected");
+
+        $("#buttonDisConnect").hide();
+        $("#sendmassgage").hide();
+        $("#agent-status").hide();
+        $("#buttonConnect").show();
+        $("#icon").attr("src", "./assets/icon/disconnect.png");
+        $("#connectTimeicon").hide();
+        $("#connectTime").empty().append("Information");
+        $("#statusLabel").empty();
+        $("#reports").empty();
+        $("#statusLabel")
+          .empty()
+          .removeClass()
+          .addClass("badge bg-dark")
+          .append("N/A");
+        IsLogin = 0;
+        AgentName = "";
+        AgentCode = "";
+
+        $("#display").show();
+        $("#agent").val("");
+        $("#agent").focus();
+
+        $("#errMessage").empty();
+
+        // $("#ConnectionStatus").empty().append("Disconnected");
+        $("#ConnectionStatus")
+          .empty()
+          .removeClass()
+          .addClass("badge bg-danger")
+          .append("Disconnected");
+
+        console.log("Socket is connected");
+        console.log(" Agent Code  -> Set empty");
+        localStorage.setItem("agent", "");
+        console.log(localStorage.getItem("agent"));
+      }
+
+      //-------- Web Socket ----------
+
+      function websocketConnect(status) {
+        /*
+                        status == "on" ?
+                            (c = confirm("Do you want to connect?")) :
+                            (c = confirm("Do you want to disconnect?"));
+            */
+        // if (connectSocket == false && wsChecks == "true") {
+        //   ws = new WebSocket("ws://" + WebSecketServer + "/?agentcode=" + AgentCode);
+        // }
+        let c = true;
+
+        if (c == true && wsChecks == "true") {
+          $("#basicUsage").show().css("display", "inline-block");
+          $("#reports").show();
+          $("#nodata").show();
+          //$("#errMessage").show();
+          if (status == "off") {
+            timer.stop();
+            timer.reset();
+            $("#basicUsage").empty().removeClass();
+            ws.close();
+            connectSocket = false;
+            $("#AgentCode").empty().append("No Data");
+            $("#agent").show();
+            $("#status")
+              .removeClass()
+              .addClass("badge bg-warning")
+              .empty()
+              .append("Disconnected");
+
+            $("#buttonDisConnect").hide();
+            $("#sendmassgage").hide();
+            $("#agent-status").hide();
+            $("#buttonConnect").show();
+            $("#icon").attr("src", "./assets/icon/disconnect.png");
+            $("#connectTimeicon").hide();
+            $("#connectTime").empty().append("Information");
+            $("#statusLabel").empty();
+            $("#reports").empty();
+            $("#statusLabel")
+              .empty()
+              .removeClass()
+              .addClass("badge bg-dark")
+              .append("N/A");
+            IsLogin = 0;
+          } else if (status == "on") {
+            ws = new WebSocket(WebSecketServer + "/?agentcode=" + AgentCode);
+            $("#buttonDisConnect").show();
+            $("#sendmassgage").show();
+            $("#agent-status").show();
+            $("#buttonConnect").hide();
+            $("#AgentCode").empty().append(AgentCode);
+            $("#agent").hide();
+            $("#status")
+              .removeClass()
+              .addClass("badge bg-success")
+              .empty()
+              .append("Connected");
+
+            ws.onmessage = function (message) {
+              var response = message.data;
+
+              console.log("message received: " + message.data);
+              // document.getElementById('messageFromServer').innerHTML = response;
+
+              if (message.data == "NEW USER JOINED") {
+                $("#ConnectionStatus")
+                  .empty()
+                  .removeClass()
+                  .addClass("badge bg-success")
+                  .append("Connected");
+                console.log("Socket is connected");
+
+                if (connectSocket == false) {
+                  connectSocket = true;
+
+                  setLoginTime();
+
+                  $("#status")
+                    .removeClass()
+                    .addClass("badge bg-success")
+                    .empty()
+                    .append("Connected");
+
+                  // $('#statusLabel').empty().removeClass().addClass('badge bg-success').append('Available');
+
+                  counterTimer();
+                }
+              }
+
+              if (connectSocket == true && message.data != "NEW USER JOINED") {
+                $("#status")
+                  .removeClass()
+                  .addClass("badge bg-success")
+                  .empty()
+                  .append("Connected");
+
+                var response = JSON.parse(message.data);
+                // document.getElementById('log').innerHTML = response['MessageType'];
+                if (response.MessageType == 2) {
+                  openApplication();
+                }
+                if (response.MessageType == 3) {
+                  $("#reports").empty();
+
+                  if (ConcurrentCall.length > 0) {
+                    if (
+                      searchArray(response["DIDNumber"], ConcurrentCall) != true
+                    ) {
+                      if (response["ConcurrentCall"] > 0) {
+                        ConcurrentCall.push({
+                          DIDNumber: response["DIDNumber"],
+                          ServiceCode: response["ServiceCode"],
+                          Call: response["ConcurrentCall"],
+                        });
+                        openApplication();
+                      }
+                    } else {
+                      for (var i = 0; i < ConcurrentCall.length; i++) {
+                        if (
+                          ConcurrentCall[i].ServiceCode ==
+                            response["ServiceCode"] &&
+                          response["ConcurrentCall"] > 0
+                        ) {
+                          ConcurrentCall[i].Call = response["ConcurrentCall"];
+                          openApplication();
+                        }
+                        if (
+                          ConcurrentCall[i].ServiceCode ==
+                            response["ServiceCode"] &&
+                          response["ConcurrentCall"] == 0
+                        ) {
+                          ConcurrentCall.splice(i, 1);
+                        }
+                      }
+                    }
+                  } else {
+                    ConcurrentCall.push({
+                      DIDNumber: response["DIDNumber"],
+                      ServiceCode: response["ServiceCode"],
+                      Call: response["ConcurrentCall"],
+                    });
+                    response["ConcurrentCall"] > 0 && openApplication();
+                  }
+
+                  if (ConcurrentCall.length > 0) {
+                    for (var i = 0; i < ConcurrentCall.length; i++) {
+                      if (parseInt(ConcurrentCall[i]["Call"]) > 0) {
+                        $("#reports").append(
+                          '<div class="col-6 mb-3">' +
+                            '<div class=" bg-light shadow text-dark rounded"><div class="row">' +
+                            '<div class="col-9" style="padding-left:15px ">' +
+                            ConcurrentCall[i]["ServiceCode"] +
+                            "</div>" +
+                            '<div class="col-3 text-right"  style="padding-left:5px "><span class="badge ' +
+                            addClass(ConcurrentCall[i]["Call"]) +
+                            ' shadow-sm">' +
+                            ConcurrentCall[i]["Call"] +
+                            "</span></div>" +
+                            "</div></div></div>"
+                        );
+                      }
+                    }
+
+                    callTotal = ConcurrentCall.reduce(function (prev, cur) {
+                      return prev + cur.Call;
+                    }, 0);
+
+                    if (callTotal >= 1) {
+                      $("#nodata").hide();
+                    } else {
+                      $("#reports").empty();
+                      $("#nodata").show();
+                    }
+
+                    // $('#nodata').empty().append(callTotal)
+                  } else {
+                    $("#nodata").empty();
+                    $("#nodata").append("--- No Data ---").show();
+                    quitApplication();
+                  }
+                }
+                if (response.MessageType == 4) {
+                  console.log("response.MessageType == 4");
+                  console.log("response.IsLogin = " + response.IsLogin);
+                  if (
+                    response.AgentStatus == "1" ||
+                    response.AgentStatus == "2" ||
+                    response.AgentStatus == "3" ||
+                    response.AgentStatus == "4"
+                    // (response.AgentStatus == "4" && response.IsLogin == 1)
+                  ) {
+                    if (response.IsLogin == 0) {
+                      logoutFromAPI();
+                    } else {
+                      if (IsLogin == 0) {
+                        IsLogin = 1;
+                        setLoginTime();
+                      }
+
+                      if (response.AgentStatus != agentStatusID) {
+                        counterTimer();
+                        agentStatusID = response.AgentStatus;
+                      }
+                      console.log(
+                        "response.MessageType == 4: " + response.AgentStatus
+                      );
+                      statusDisplay(response.AgentStatus);
+
+                      //------
+                      statusNotify(response.DateTime);
+                    }
+                  }
+                }
+                if (response.MessageType == 5) {
+                  console.log("response.MessageType == 5");
+                  console.log("response.IsLogin = " + response.IsLogin);
+                  messageNotify(response);
+
+                  /*
+                                if (response.IsLogin == 0) {
+                                    logoutFromAPI();
+                                } else {
+                                    if (IsLogin == 0) {
+                                        IsLogin = 1;
+                                        setLoginTime();
+                                    }
+
+                                    if (response.AgentStatus != agentStatusID) {
+                                        counterTimer();
+                                        agentStatusID = response.AgentStatus;
+                                    }
+                                    console.log("response.MessageType == 4: " + response.AgentStatus);
+                                    statusDisplay(response.AgentStatus);
+                                }
+                                */
+                }
+                /*
+                            if (response.MessageType == 10) {
+
+                                console.log("response.MessageType == 10");
+                                //console.log("response.IsLogin = " + response.IsLogin);
+                                console.log("response.operationType = " + response.operationType);
+                                if (
+                                    response.AgentStatus == "1" ||
+                                    response.AgentStatus == "2" ||
+                                    response.AgentStatus == "3" ||
+                                    response.AgentStatus == "4"
+                                    // (response.AgentStatus == "4" && response.IsLogin == 1)
+                                ) {
+                                    if (response.IsLogin == 0) {
+                                        logoutFromAPI();
+                                    } else {
+                                        CallOperationAPI(response.operationType, response.phoneNumber);
+                                    }
+                                }
+
+                            }
+                            */
+              }
+            };
+
+            ws.onclose = function (e) {
+              console.log(
+                "Socket is closed. Reconnect will be attempted in 1 second.",
+                e.reason
+              );
+
+              setTimeout(function () {
+                console.log("IsLogin: ", IsLogin);
+                if (IsLogin != 0) {
+                  $("#ConnectionStatus")
+                    .empty()
+                    .removeClass()
+                    .addClass("badge bg-warning text-dark")
+                    .append("Reconnecting..");
+
+                  console.log("Socket is reconnecting..");
+                  websocketConnect(status);
+                }
+                /*
+                            else{
+                                $("#ConnectionStatus").empty().append("Connected");
+                                console.log('Socket is connected');
+                            }
+                            */
+              }, 1000);
+            };
+
+            ws.onerror = function (err) {
+              console.error(
+                "Socket encountered error: ",
+                err.message,
+                "Closing socket"
+              );
+              ws.close();
+            };
+          }
+        }
+      }
+      //-------- Web Socket ----------
+    </script>
+
     <!------------------------------------>
+  </head>
 
-</head>
-
-<body data-window="main">
-
+  <body data-window="main">
     <div class="warper">
-
-        <div class="row">
-            <div class="col-12">
-                <table class="table table-sm fs-6">
-                    <tr>
-                        <div class="pt-2 pl-2 pr-2">
-                    <tr>
-                        <td class="text-white">
-                            <span class="text-white" id="connectTime">Information</span>
-                        </td>
-                    </tr>
-                    <tr>
-                        <td class="text-white">
-                            <span class="text-blue badge bg-danger" id="ConnectionStatus">Disconnected</span>
-                        </td>
-                    </tr>
-                    <tr>
-                    </tr>
-            </div>
+      <div class="row">
+        <div class="col-12">
+          <table class="table table-sm fs-6">
+            <tr>
+              <div class="pt-2 pl-2 pr-2">
+                <tr>
+                  <td class="text-white">
+                    <i
+                      class="bi bi-exclamation-circle icon-danger"
+                      id="connectTimeicon"
+                    ></i>
+                    <span class="text-white" id="connectTime">Information</span>
+                  </td>
+                </tr>
+                <tr>
+                  <td class="text-white">
+                    <span
+                      class="text-blue badge bg-danger"
+                      id="ConnectionStatus"
+                      >Disconnected</span
+                    >
+                    <span id="statusLabel" class="badge bg-dark">N/A</span>
+                  </td>
+                </tr>
+                <tr></tr>
+              </div>
             </tr>
-            </table>
+          </table>
         </div>
 
         <div class="col-12">
-            <table class="table table-sm fs-6">
-                <tr>
-                    <div class="row">
-                        <div class="col-sm-12 text-center ">
-                            <button id="buttonCall" class="btn btn-primary btn-sm shadow btn-block mt-2" disable
-                                onclick="CallOnescreen(1,'0000')">
-                                Pop-up Chrome
-                            </button>
-                            <button id="buttonDisConnect" class="btn btn-danger btn-sm shadow btn-block mt-2"
-                                onclick="logoutFromAPI()">
-                                Disconnect
-                            </button>
-                        </div>
+          <table class="table table-sm fs-6">
+            <tr>
+              <div class="row">
+                <div class="col-sm-12">
+                  <div class="input-group">
+                    <select
+                      id="agent-status"
+                      onchange="updateAgentStatus(this.value)"
+                      class="form-control form-control-sm dropdown"
+                    >
+                      <option value="1">Available</option>
+                      <option value="2">Active</option>
+                      <option value="3">Wrap</option>
+                      <option value="4">Not Ready</option>
+                    </select>
+                    <div class="input-group-append">
+                      <button
+                        id="buttonDisConnect"
+                        class="btn btn-danger btn-sm shadow btn-block"
+                        onclick="logoutFromAPI()"
+                      >
+                        Disconnect
+                      </button>
                     </div>
-                </tr>
-            </table>
+                  </div>
+                </div>
+              </div>
+            </tr>
+          </table>
         </div>
 
         <div id="display">
-            <div class="row">
-                <div class="col-12">
-                    <div class="input-group mb-1">
-                        <input type="text" class="form-control form-control-sm" id="agent"
-                            placeholder="Enter Agent Code" />
-                        <button id="buttonConnect" class="btn btn-warning btn-sm btn-block shadow"
-                            onclick="checkInput('on')">
-                            Connect
-                        </button>
-                    </div>
-                </div>
+          <div class="row">
+            <div class="col-12">
+              <div class="input-group mb-1">
+                <input
+                  type="text"
+                  class="form-control form-control-sm"
+                  id="agent"
+                  placeholder="Enter Agent Code"
+                />
+                <button
+                  id="buttonConnect"
+                  class="btn btn-warning btn-sm btn-block shadow"
+                  onclick="checkInput('on')"
+                >
+                  Connect
+                </button>
+              </div>
             </div>
+          </div>
         </div>
 
-        <div class="col-md-12 text-center pt-2">
-
+        <div class="sendmassgage" id="sendmassgage">
+          <div class="row">
+            <div class="col">
+              <input
+                type="text"
+                class="form-control form-control-sm"
+                id="toAgentCode"
+                placeholder="Agent Code"
+                style="width: 100%"
+              />
+            </div>
+            <div class="col-6">
+              <input
+                type="text"
+                class="form-control form-control-sm"
+                id="sendMessage"
+                placeholder="Enter message"
+                style="width: 100%"
+              />
+            </div>
+            <div class="col text-center">
+              <button
+                id="buttonSendMessage"
+                class="btn btn-primary btn-sm btn-block shadow"
+                onclick="postSendMessage()"
+                style="width: 100%"
+              >
+                Send
+              </button>
+            </div>
+          </div>
         </div>
-    </div>
+      </div>
     </div>
 
     <script>
-        // You can also require other files to run in this process
-        // require('./renderer.js')
+      // You can also require other files to run in this process
+      //require('./renderer.js')
     </script>
-</body>
-
+  </body>
 </html>

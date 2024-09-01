@@ -14,7 +14,7 @@ var dbconfig = {
       instancename: "10.21.43.203", // SQL Server instance name
     },
   },
-  production: {
+  development: {
     server: "192.168.56.106",
     database: "team4_web_labDB",
     user: "sa",
